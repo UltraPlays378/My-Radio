@@ -37,63 +37,63 @@
     button:hover {
       background: #0cc;
     }
-/* Status badge container */
-.status-badge {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  color: #fff;
-  font-weight: 600;
-  overflow: hidden;
-  min-width: 140px;
-  box-sizing: border-box;
-}
+    /* Status badge container */
+    .status-badge {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      color: #fff;
+      font-weight: 600;
+      overflow: hidden;
+      min-width: 140px;
+      box-sizing: border-box;
+    }
 
-/* Layered gradient backgrounds */
-.status-badge .status-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  transition: opacity 420ms ease-in-out;
-  pointer-events: none;
-}
+    /* Layered gradient backgrounds */
+    .status-badge .status-bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      transition: opacity 420ms ease-in-out;
+      pointer-events: none;
+    }
 
-/* Online gradient layer */
-.status-badge .status-bg.online {
-  background: linear-gradient(135deg, #00ff88, #009944);
-  opacity: 0;
-}
+    /* Online gradient layer */
+    .status-badge .status-bg.online {
+      background: linear-gradient(135deg, #00ff88, #009944);
+      opacity: 0;
+    }
 
-/* Offline gradient layer */
-.status-badge .status-bg.offline {
-  background: linear-gradient(135deg, #ff4444, #aa0000);
-  opacity: 0;
-}
+    /* Offline gradient layer */
+    .status-badge .status-bg.offline {
+      background: linear-gradient(135deg, #ff4444, #aa0000);
+      opacity: 0;
+    }
 
-/* When online, show online layer; when offline, show offline layer */
-.status-badge.online .status-bg.online { opacity: 1; }
-.status-badge.offline .status-bg.offline { opacity: 1; }
+    /* When online, show online layer; when offline, show offline layer */
+    .status-badge.online .status-bg.online { opacity: 1; }
+    .status-badge.offline .status-bg.offline { opacity: 1; }
 
-/* Foreground content sits above the backgrounds */
-.status-badge .status-content {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  justify-content: space-between;
-}
+    /* Foreground content sits above the backgrounds */
+    .status-badge .status-content {
+      position: relative;
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      justify-content: space-between;
+    }
 
-/* Time styling */
-.status-badge .status-time {
-  opacity: 0.85;
-  font-weight: 500;
-  font-size: 0.95em;
-}
+    /* Time styling */
+    .status-badge .status-time {
+      opacity: 0.85;
+      font-weight: 500;
+      font-size: 0.95em;
+    }
     /* ---------------------------------------------------
        GLOBAL RANGE SLIDER (seek bar + volume base)
        --------------------------------------------------- */
@@ -168,6 +168,12 @@
       border-radius: 50%;
       cursor: pointer;
     }
+
+    /* small helper */
+    .muted { opacity: 0.6; }
+    .sources-list { margin-top: 12px; font-size: 0.9em; color: #ddd; }
+    .sources-list li { margin-bottom: 6px; word-break: break-all; }
+    .small { font-size: 0.85em; color: #bbb; margin-left: 8px; }
   </style>
 </head>
 
@@ -178,18 +184,16 @@
 
 /* ------------------ Online Status ------------------ */
 function OnlineStatus() {
-  const [isOnline, setIsOnline] = React.useState(Boolean(GlitchJS.isOnline));
+  const [isOnline, setIsOnline] = React.useState(Boolean(GlitchJS && GlitchJS.isOnline));
   const [time, setTime] = React.useState(() => new Date());
 
   React.useEffect(() => {
     const tick = () => {
-      setIsOnline(Boolean(GlitchJS.isOnline));
+      setIsOnline(Boolean(GlitchJS && GlitchJS.isOnline));
       setTime(new Date());
     };
 
-    // Poll runtime flag frequently for realtime updates
     const interval = setInterval(tick, 250);
-    // Also run once immediately
     tick();
 
     return () => clearInterval(interval);
@@ -218,42 +222,13 @@ function OnlineStatus() {
     </div>
   );
 }
-/* ------------------ Audio Player ------------------ */
+
+/* ------------------ Audio Player (loads every file from repo audio folder) ------------------ */
 function AudioPlayer() {
-const [audioSources, setAudioSources] = React.useState([]);
+  const [audioSources, setAudioSources] = React.useState([]);
+  const [loadingSources, setLoadingSources] = React.useState(false);
+  const [sourcesError, setSourcesError] = React.useState(null);
 
-React.useEffect(() => {
-  async function fetchReleases() {
-    try {
-      const res = await fetch(
-        "https://api.github.com/repos/UltraPlays378/My-Radio.io/releases"
-      );
-
-      const releases = await res.json();
-
-      const allSongs = [];
-
-      releases.forEach(release => {
-        release.assets.forEach(asset => {
-          const name = asset.name.toLowerCase();
-          if (
-            name.endsWith(".mp3") ||
-            name.endsWith(".wav") ||
-            name.endsWith(".flac")
-          ) {
-            allSongs.push(asset.browser_download_url);
-          }
-        });
-      });
-
-      setAudioSources(allSongs);
-    } catch (err) {
-      console.error("Failed to fetch releases:", err);
-    }
-  }
-
-  fetchReleases();
-}, []);
   const audioRef = React.useRef(null);
 
   const [currentSrc, setCurrentSrc] = React.useState(null);
@@ -265,7 +240,53 @@ React.useEffect(() => {
   const lastTrack = React.useRef(null);
   const recentTracks = React.useRef([]);
 
+  // Fetch every file in the repository's audio folder using GitHub contents API
+  React.useEffect(() => {
+    const controller = new AbortController();
+    async function fetchAudioFolder() {
+      setLoadingSources(true);
+      setSourcesError(null);
+      try {
+        const apiUrl = "https://api.github.com/repos/UltraPlays378/My-Radio.io/contents/audio";
+        const res = await fetch(apiUrl, { signal: controller.signal });
+        if (!res.ok) {
+          throw new Error(`GitHub API returned ${res.status}`);
+        }
+        const items = await res.json();
+
+        // items should be an array of file objects when the path exists
+        if (!Array.isArray(items)) {
+          throw new Error("Unexpected response from GitHub contents API");
+        }
+
+        const allowed = items
+          .filter(it => it && it.type === "file" && typeof it.name === "string")
+          .filter(it => {
+            const name = it.name.toLowerCase();
+            return name.endsWith(".mp3") || name.endsWith(".wav") || name.endsWith(".flac") || name.endsWith(".ogg") || name.endsWith(".m4a");
+          })
+          .map(it => it.download_url)
+          .filter(Boolean);
+
+        setAudioSources(allowed);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          console.error("Failed to load audio folder:", err);
+          setSourcesError(String(err));
+        }
+      } finally {
+        setLoadingSources(false);
+      }
+    }
+
+    fetchAudioFolder();
+
+    return () => controller.abort();
+  }, []);
+
   const getSmartRandomTrack = () => {
+    if (!audioSources || audioSources.length === 0) return null;
+
     let pool = audioSources.filter(src => src !== lastTrack.current);
 
     if (recentTracks.current.length >= audioSources.length - 1) {
@@ -274,42 +295,69 @@ React.useEffect(() => {
 
     pool = pool.filter(src => !recentTracks.current.includes(src));
 
-    const choice = pool[Math.floor(Math.random() * pool.length)];
+    if (pool.length === 0) {
+      pool = audioSources.filter(src => src !== lastTrack.current);
+    }
 
+    if (pool.length === 0) {
+      pool = audioSources.slice();
+    }
+
+    const choice = pool[Math.floor(Math.random() * pool.length)];
     recentTracks.current.push(choice);
     lastTrack.current = choice;
-
     return choice;
   };
 
   const playRandom = () => {
+    if (!audioSources || audioSources.length === 0) {
+      console.warn("No audio sources available to play.");
+      return;
+    }
     const next = getSmartRandomTrack();
-    setCurrentSrc(next);
+    if (next) setCurrentSrc(next);
   };
 
   React.useEffect(() => {
     if (!currentSrc) return;
     const audio = audioRef.current;
+    if (!audio) return;
     audio.src = currentSrc;
-    audio.play();
+    audio.volume = volume;
+    audio.playbackRate = playbackRate;
+    const p = audio.play();
+    if (p && typeof p.catch === "function") {
+      p.catch(err => {
+        console.warn("Playback prevented:", err);
+      });
+    }
   }, [currentSrc]);
 
   React.useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    // apply selected playback rate and try to disable pitch-preservation where supported
     audio.playbackRate = playbackRate;
     if ('preservesPitch' in audio) audio.preservesPitch = false;
     if ('mozPreservesPitch' in audio) audio.mozPreservesPitch = false;
     if ('webkitPreservesPitch' in audio) audio.webkitPreservesPitch = false;
   }, [playbackRate]);
 
+  React.useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = volume;
+  }, [volume]);
+
   const onLoadedMetadata = () => {
-    setDuration(audioRef.current.duration || 0);
-  }; 
+    const audio = audioRef.current;
+    if (!audio) return;
+    setDuration(audio.duration || 0);
+  };
 
   const onTimeUpdate = () => {
-    setCurrentTime(audioRef.current.currentTime);
+    const audio = audioRef.current;
+    if (!audio) return;
+    setCurrentTime(audio.currentTime);
   };
 
   const fmt = (sec) => {
@@ -321,20 +369,28 @@ React.useEffect(() => {
 
   const onSeek = (e) => {
     const audio = audioRef.current;
+    if (!audio) return;
     const value = Number(e.target.value);
     audio.currentTime = (value / 1000) * duration;
+    setCurrentTime(audio.currentTime);
   };
 
   const onVolume = (e) => {
     const v = Number(e.target.value);
     setVolume(v);
-    audioRef.current.volume = v;
+    const audio = audioRef.current;
+    if (audio) audio.volume = v;
   };
 
   const togglePause = () => {
     const audio = audioRef.current;
-    if (audio.paused) audio.play();
-    else audio.pause();
+    if (!audio) return;
+    if (audio.paused) {
+      const p = audio.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } else {
+      audio.pause();
+    }
   };
 
   const seekPercent = duration ? (currentTime / duration) * 100 : 0;
@@ -343,13 +399,19 @@ React.useEffect(() => {
     <div>
       <h1>React Radio</h1>
 
-      <p>Song playing: {currentSrc ? currentSrc.split("/").pop() : "None"}</p>
+      <p>
+        Song playing: <strong>{currentSrc ? currentSrc.split("/").pop() : "None"}</strong>
+        {loadingSources ? <span className="small"> Loading sources...</span> : null}
+      </p>
 
       <p>{fmt(currentTime)} / {fmt(duration)}</p>
 
-      <button onClick={playRandom}>Start Radio</button>
+      <button onClick={playRandom} disabled={loadingSources || audioSources.length === 0}>Start Radio</button>
       <button onClick={togglePause}>Pause / Resume</button>
-      <button onClick={() => (audioRef.current.currentTime = 0)}>⏮ Back</button>
+      <button onClick={() => {
+        const audio = audioRef.current;
+        if (audio) audio.currentTime = 0;
+      }}>⏮ Back</button>
       <button onClick={playRandom}>⏭ Next</button>
 
       <br /><br />
@@ -372,30 +434,30 @@ React.useEffect(() => {
 
       <br /><br />
 
-<label>Speed/Pitch: <span>{playbackRate.toFixed(2)}x</span></label>
-<input
-  className="volume-slider"
-  type="range"
-  min="0.5"
-  max="2"
-  step="0.1"
-  value={playbackRate}
-  onChange={(e) => {
-    const v = Number(e.target.value);
-    setPlaybackRate(v);
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.playbackRate = v;
-    if ('preservesPitch' in audio) audio.preservesPitch = false;
-    if ('mozPreservesPitch' in audio) audio.mozPreservesPitch = false;
-    if ('webkitPreservesPitch' in audio) audio.webkitPreservesPitch = false;
-  }}
-  style={{
-    width: "150px",
-    marginLeft: "10px",
-    "--seek-fill": `${((playbackRate - 0.5) / 1.5) * 100}%`
-  }}
-/>
+      <label>Speed/Pitch: <span>{playbackRate.toFixed(2)}x</span></label>
+      <input
+        className="volume-slider"
+        type="range"
+        min="0.5"
+        max="2"
+        step="0.1"
+        value={playbackRate}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          setPlaybackRate(v);
+          const audio = audioRef.current;
+          if (!audio) return;
+          audio.playbackRate = v;
+          if ('preservesPitch' in audio) audio.preservesPitch = false;
+          if ('mozPreservesPitch' in audio) audio.mozPreservesPitch = false;
+          if ('webkitPreservesPitch' in audio) audio.webkitPreservesPitch = false;
+        }}
+        style={{
+          width: "150px",
+          marginLeft: "10px",
+          "--seek-fill": `${((playbackRate - 0.5) / 1.5) * 100}%`
+        }}
+      />
 
       <br /><br />
 
@@ -418,6 +480,28 @@ React.useEffect(() => {
         onTimeUpdate={onTimeUpdate}
         onEnded={playRandom}
       />
+
+      <div style={{ marginTop: 18 }}>
+        <div className="sources-list">
+          <strong>Sources (loaded from repo audio folder):</strong>
+          {sourcesError ? (
+            <div className="muted">Error loading sources: {sourcesError}</div>
+          ) : loadingSources ? (
+            <div className="muted">Loading...</div>
+          ) : audioSources.length === 0 ? (
+            <div className="muted">No audio files found in the repository audio folder.</div>
+          ) : (
+            <ul>
+              {audioSources.map((s, i) => (
+                <li key={i}>
+                  {s.split("/").pop() || s}
+                  <button style={{ marginLeft: 8 }} onClick={() => setCurrentSrc(s)}>Play</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
